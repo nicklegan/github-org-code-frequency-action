@@ -1,0 +1,41 @@
+name: GitHub Organization Code Frequency Action
+
+inputs:
+  token:
+    description: 'A Personal Access token with repo and read:org scope'
+    required: true
+  org:
+    description: 'Custom GitHub organization to retrieve data for'
+    default: ''
+    required: false
+  weeks:
+    description: 'Amount of weeks in the past to collect data for'
+    default: '4'
+    required: false
+  sort:
+    description: 'Column used for sorting report results'
+    # additions, deletions, alltimeAdditions, alltimeDeletions, primaryLanguage, createdDate
+    default: 'additions'
+    required: false
+  committer-name:
+    description: 'The name of the committer that will appear in the Git history'
+    default: 'github-actions'
+    required: false
+  committer-email:
+    description: 'The committer email that will appear in the Git history'
+    default: 'github-actions@github.com'
+    required: false
+  fromdate:
+    description: 'The date from which to start collecting data'
+    required: false
+  todate:
+    description: 'The date to which to stop collecting data'
+    required: false
+
+runs:
+  using: 'node12'
+  main: 'dist/index.js'
+
+branding:
+  icon: 'list'
+  color: 'green'
