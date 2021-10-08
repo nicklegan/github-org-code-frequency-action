@@ -2,11 +2,11 @@ const core = require('@actions/core')
 const github = require('@actions/github')
 const stringify = require('csv-stringify/lib/sync')
 const arraySort = require('array-sort')
-const {Octokit} = require('@octokit/rest')
+const {GitHub} = require('@actions/github/lib/utils')
 const {retry} = require('@octokit/plugin-retry')
 const {throttling} = require('@octokit/plugin-throttling')
 
-const MyOctokit = Octokit.plugin(throttling, retry)
+const MyOctokit = GitHub.plugin(throttling, retry)
 const eventPayload = require(process.env.GITHUB_EVENT_PATH)
 
 const token = core.getInput('token', {required: true})
@@ -20,7 +20,7 @@ let fileDate
 const octokit = new MyOctokit({
   auth: token,
   request: {
-    retries: 1,
+    retries: 3,
     retryAfter: 180
   },
   throttle: {
