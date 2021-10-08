@@ -10,6 +10,15 @@ The example [workflow](https://docs.github.com/en/actions/reference/workflow-syn
 name: Code Frequency Action
 
 on:
+  schedule:
+    # Runs on the first day of the month at 00:00 UTC
+    #
+    #        ┌────────────── minute
+    #        │ ┌──────────── hour
+    #        │ │ ┌────────── day (month)
+    #        │ │ │ ┌──────── month
+    #        │ │ │ │ ┌────── day (week)
+    - cron: '0 0 1 * *'
   workflow_dispatch:
     inputs:
       fromdate:
@@ -18,8 +27,6 @@ on:
       todate:
         description: 'Optional interval end date (format: yyyy-mm-dd)'
         required: false # Skipped if workflow dispatch input is not provided
-  schedule:
-    - cron: '0 0 1 * *' # Runs on the first day of the month at 00:00
 
 jobs:
   code-frequency-report:
@@ -30,7 +37,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Get Git audit-log
-        uses: nicklegan/github-org-code-frequency-action@v1.0.0
+        uses: nicklegan/github-org-code-frequency-action@v1.0.1
         with:
           token: ${{ secrets.ORG_TOKEN }}
           fromdate: ${{ github.event.inputs.fromdate }} # Used for workflow dispatch input
@@ -73,7 +80,7 @@ If the below fields are left empty during [workflow dispatch input](https://gith
 
 ## CSV layout
 
-The results of the 2nd and 3rd report column will be the sum of code frequency date for the requested interval per organization repository.
+The results of the 2nd and 3rd report column will be the sum of code frequency date for the selected interval per organization repository.
 
 | Column                   | Description                                         |
 | :----------------------- | :-------------------------------------------------- |
@@ -88,8 +95,14 @@ The results of the 2nd and 3rd report column will be the sum of code frequency d
 
 A CSV report file to be saved in the repository `reports` folder using the following naming format: `organization-date-interval.csv`.
 
-## GitHub App installation authentication
+## GitHub App authentication
 
-For large enterprise organizations to avoid hitting the 5000 requests per hour authenticated GitHub API rate limit, [authenticating as a GitHub App installation](https://docs.github.com/developers/apps/building-github-apps/authenticating-with-github-apps#authenticating-as-an-installation) instead would increase the [API request limit](https://docs.github.com/developers/apps/building-github-apps/rate-limits-for-github-apps#github-enterprise-cloud-server-to-server-rate-limits) in comparison to using a personal access token.
+In some scenarios it might be preferred to authenthicate as a [GitHub App](https://docs.github.com/developers/apps/getting-started-with-apps/about-apps) rather than using a [personal access token](https://docs.github.com/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token).
 
-The authentication strategy can be integrated with the Octokit library by installing and configuring the [@octokit/auth-app](https://github.com/octokit/auth-app.js/#usage-with-octokit) npm module and [rebuild](https://docs.github.com/actions/creating-actions/creating-a-javascript-action) the Action in a separate repository.
+The following features could be a benefit authenticating as a GitHub App installation:
+
+- The GitHub App is directly installed on the organization, no separate user account is required.
+- A GitHub App has more granular permissions than a personal access token.
+- To avoid hitting the 5000 requests per hour GitHub API rate limit, [authenticating as a GitHub App installation](https://docs.github.com/developers/apps/building-github-apps/authenticating-with-github-apps#authenticating-as-an-installation) would increase the [API request limit](https://docs.github.com/developers/apps/building-github-apps/rate-limits-for-github-apps#github-enterprise-cloud-server-to-server-rate-limits).
+
+The GitHub App authentication strategy can be integrated with the Octokit library by installing and configuring the [@octokit/auth-app](https://github.com/octokit/auth-app.js/#usage-with-octokit) npm module before [rebuilding](https://docs.github.com/actions/creating-actions/creating-a-javascript-action) the Action in a separate repository.
