@@ -15,8 +15,11 @@ inputs:
     required: false
   sort:
     description: 'Column used for sorting report results'
-    # additions, deletions, alltimeAdditions, alltimeDeletions, primaryLanguage, createdDate
     default: 'additions'
+    required: false
+  sort-order:
+    description: 'Selected column sorting direction'
+    default: 'desc'
     required: false
   committer-name:
     description: 'The name of the committer that will appear in the Git history'
@@ -32,9 +35,15 @@ inputs:
   todate:
     description: 'The date to which to stop collecting data'
     required: false
+  appid:
+    required: false
+  privatekey:
+    required: false
+  installationid:
+    required: false
 
 runs:
-  using: 'node12'
+  using: 'node16'
   main: 'dist/index.js'
 
 branding:

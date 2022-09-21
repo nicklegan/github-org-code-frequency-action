@@ -1,149 +1,56 @@
 const core = require('@actions/core')
 const github = require('@actions/github')
-const stringify = require('csv-stringify/lib/sync')
-const arraySort = require('array-sort')
-const {GitHub} = require('@actions/github/lib/utils')
-const {retry} = require('@octokit/plugin-retry')
-const {throttling} = require('@octokit/plugin-throttling')
-
-const MyOctokit = GitHub.plugin(throttling, retry)
+const { stringify } = require('csv-stringify/sync')
+const { orderBy } = require('natural-orderby')
 const eventPayload = require(process.env.GITHUB_EVENT_PATH)
+const { GitHub } = require('@actions/github/lib/utils')
+const { createAppAuth } = require('@octokit/auth-app')
 
-const token = core.getInput('token', {required: true})
-const org = core.getInput('org', {required: false}) || eventPayload.organization.login
-const weeks = core.getInput('weeks', {required: false}) || '4'
+const appId = core.getInput('appid', { required: false })
+const privateKey = core.getInput('privatekey', { required: false })
+const installationId = core.getInput('installationid', { required: false })
 
+const token = core.getInput('token', { required: true })
+const org = core.getInput('org', { required: false }) || eventPayload.organization.login
+const weeks = core.getInput('weeks', { required: false }) || '4'
+const sortColumn = core.getInput('sort', { required: false }) || 'additions'
+const sortOrder = core.getInput('sort-order', { required: false }) || 'desc'
+
+let octokit
 let columnDate
 let fileDate
 
-// API throttling and retry
-const octokit = new MyOctokit({
-  auth: token,
-  request: {
-    retries: 3,
-    retryAfter: 180
-  },
-  throttle: {
-    onRateLimit: (retryAfter, options, octokit) => {
-      octokit.log.warn(`Request quota exhausted for request ${options.method} ${options.url}`)
-
-      if (options.request.retryCount === 0) {
-        // only retries once
-        octokit.log.info(`Retrying after ${retryAfter} seconds!`)
-        return true
-      }
-    },
-    onAbuseLimit: (retryAfter, options, octokit) => {
-      // does not retry, only logs a warning
-      octokit.log.warn(`Abuse detected for request ${options.method} ${options.url}`)
+// GitHub App authentication
+if (appId && privateKey && installationId) {
+  octokit = new GitHub({
+    authStrategy: createAppAuth,
+    auth: {
+      appId: appId,
+      privateKey: privateKey,
+      installationId: installationId
     }
-  }
-})
+  })
+} else {
+  octokit = github.getOctokit(token)
+}
 
-// Retrieve code frequency data for the repo and set interval input selection
-async function freqStats(repo) {
+// Orchestrator
+;(async () => {
   try {
-    const response = await octokit.rest.repos.getCodeFrequencyStats({
-      owner: org,
-      repo: repo.name
-    })
-
-    let weeksTotal
-    let weeksInterval = []
+    let repoArray = []
     let sumArray = []
-    let logDate
-
-    weeksTotal = response.data
-
-    const fromdate = core.getInput('fromdate', {required: false}) || ''
-    const todate = core.getInput('todate', {required: false}) || ''
-
-    const regex = '([0-9]{4}-[0-9]{2}-[0-9]{2})'
-    const flags = 'i'
-    const re = new RegExp(regex, flags)
-
-    if (weeksTotal !== undefined) {
-      if (weeksTotal.length > 0) {
-        if (re.test(fromdate, todate) !== true) {
-          weeksInterval = weeksTotal.slice(-weeks)
-          columnDate = `<${weeks} weeks`
-          fileDate = `${weeks}-weeks`
-          logDate = `last ${weeks} weeks`
-        } else {
-          to = new Date(todate).getTime() / 1000
-          from = new Date(fromdate).getTime() / 1000
-          weeksTotal.forEach((element) => {
-            if (element[0] >= from && element[0] <= to) {
-              weeksInterval.push(element)
-            }
-            columnDate = `${fromdate} to ${todate}`
-            fileDate = `${fromdate}-to-${todate}`
-            logDate = `${fromdate} to ${todate}`
-          })
-        }
-
-        intervalTotal = await weeksInterval.reduce((r, a) => a.map((b, i) => (r[i] || 0) + b), []).slice(1)
-        alltimeTotal = await weeksTotal.reduce((r, a) => a.map((b, i) => (r[i] || 0) + b), []).slice(1)
-
-        const additions = intervalTotal[0]
-        const deletions = Math.abs(intervalTotal[1])
-        const alltimeAdditions = alltimeTotal[0]
-        const alltimeDeletions = Math.abs(alltimeTotal[1])
-        const repoName = repo.name
-        const createdDate = repo.createdAt.substr(0, 10)
-
-        let primaryLanguage
-        let allLanguages
-        if (repo.primaryLanguage !== null) {
-          primaryLanguage = repo.primaryLanguage.name
-        }
-
-        if (repo.languages !== null) {
-          allLanguages = repo.languages.nodes.map((language) => language.name).join(', ')
-        }
-
-        console.log(
-          '\n',
-          'Repository:',
-          repoName,
-          '\n',
-          `Lines added (${logDate}):`,
-          additions,
-          '\n',
-          `Lines deleted (${logDate}):`,
-          deletions,
-          '\n',
-          'Lines added (all time):',
-          alltimeAdditions,
-          '\n',
-          'Lines deleted (all time):',
-          alltimeDeletions,
-          '\n',
-          'Primary language:',
-          primaryLanguage,
-          '\n',
-          'Languages:',
-          allLanguages,
-          '\n',
-          'Date created:',
-          createdDate
-        )
-
-        sumArray.push({repoName, additions, deletions, alltimeAdditions, alltimeDeletions, createdDate, primaryLanguage, allLanguages})
-
-        return sumArray
-      }
-    }
+    await getRepos(repoArray)
+    await freqStats(repoArray, sumArray)
+    await sortpushTotals(sumArray)
   } catch (error) {
     core.setFailed(error.message)
   }
-}
+})()
 
 // Retrieve all repos for org
-;(async () => {
+async function getRepos(repoArray) {
   try {
     let paginationMember = null
-    let repoArray = []
 
     const query = `
       query ($owner: String!, $cursorID: String) {
@@ -190,54 +97,89 @@ async function freqStats(repo) {
         } else {
           paginationMember = null
         }
+        repoArray.push(repo)
       }
-      repoArray = repoArray.concat(repos)
     } while (hasNextPageMember)
-    await repoDirector(repoArray)
   } catch (error) {
     core.setFailed(error.message)
   }
-})()
+}
 
-// Initiate query requests for each repo and store the promises
-async function repoDirector(repoArray) {
+// Retrieve code frequency data for the repo and set interval input selection
+async function freqStats(repoArray, sumArray) {
   try {
-    let githubPromise
-    let promises = []
-    let csvArray = []
+    for (const repo of repoArray) {
+      do {
+        response = await octokit.rest.repos.getCodeFrequencyStats({
+          owner: org,
+          repo: repo.name
+        })
 
-    repoArray.forEach(async function (repo) {
-      githubPromise = freqStats(repo)
-      promises.push(githubPromise)
-    })
+        let weeksTotal
+        let weeksInterval = []
+        let logDate
 
-    console.log(`Retrieving repository code frequency data for the ${org} organization:`)
+        weeksTotal = response.data
 
-    Promise.all(promises).then(function (repos) {
-      const filteredArray = repos.filter((x) => x)
+        const fromdate = core.getInput('fromdate', { required: false }) || ''
+        const todate = core.getInput('todate', { required: false }) || ''
 
-      filteredArray.forEach((element) => {
-        const repoName = element[0].repoName
-        const additions = element[0].additions || 0
-        const deletions = element[0].deletions || 0
-        const alltimeAdditions = element[0].alltimeAdditions || 0
-        const alltimeDeletions = element[0].alltimeDeletions || 0
-        const primaryLanguage = element[0].primaryLanguage
-        const allLanguages = element[0].allLanguages
-        const createdDate = element[0].createdDate
+        const regex = '([0-9]{4}-[0-9]{2}-[0-9]{2})'
+        const flags = 'i'
+        const re = new RegExp(regex, flags)
 
-        csvArray.push({repoName, additions, deletions, alltimeAdditions, alltimeDeletions, primaryLanguage, allLanguages, createdDate})
-      })
+        if (weeksTotal !== undefined) {
+          if (weeksTotal.length > 0) {
+            if (re.test(fromdate, todate) !== true) {
+              weeksInterval = weeksTotal.slice(-weeks)
+              columnDate = `<${weeks} weeks`
+              fileDate = `${weeks}-weeks`
+              logDate = `last ${weeks} weeks`
+            } else {
+              to = new Date(todate).getTime() / 1000
+              from = new Date(fromdate).getTime() / 1000
+              for (const element of weeksTotal) {
+                if (element[0] >= from && element[0] <= to) {
+                  weeksInterval.push(element)
+                }
+                columnDate = `${fromdate} to ${todate}`
+                fileDate = `${fromdate}-to-${todate}`
+                logDate = `${fromdate} to ${todate}`
+              }
+            }
 
-      sortpushTotals(csvArray)
-    })
+            intervalTotal = weeksInterval.reduce((r, a) => a.map((b, i) => (r[i] || 0) + b), []).slice(1)
+            alltimeTotal = weeksTotal.reduce((r, a) => a.map((b, i) => (r[i] || 0) + b), []).slice(1)
+
+            const additions = intervalTotal[0]
+            const deletions = Math.abs(intervalTotal[1])
+            const alltimeAdditions = alltimeTotal[0]
+            const alltimeDeletions = Math.abs(alltimeTotal[1])
+            const repoName = repo.name
+            const createdDate = repo.createdAt.substr(0, 10)
+
+            let primaryLanguage
+            let allLanguages
+            if (repo.primaryLanguage !== null) {
+              primaryLanguage = repo.primaryLanguage.name
+            }
+
+            if (repo.languages !== null) {
+              allLanguages = repo.languages.nodes.map((language) => language.name).join(', ')
+            }
+            sumArray.push({ repoName, additions, deletions, alltimeAdditions, alltimeDeletions, createdDate, primaryLanguage, allLanguages })
+            console.log(repoName)
+          }
+        }
+      } while (response.status === 202)
+    }
   } catch (error) {
     core.setFailed(error.message)
   }
 }
 
 // Add columns, sort and push report to repo
-async function sortpushTotals(csvArray) {
+async function sortpushTotals(sumArray) {
   try {
     const columns = {
       repoName: 'Repository',
@@ -250,25 +192,24 @@ async function sortpushTotals(csvArray) {
       createdDate: 'Repo creation date'
     }
 
-    const sortColumn = core.getInput('sort', {required: false}) || 'additions'
-    const sortArray = arraySort(csvArray, sortColumn, {reverse: true})
-    sortArray.unshift(columns)
-
-    // Convert array to csv
-    const csv = stringify(sortArray, {})
+    const sortArray = orderBy(sumArray, [sortColumn], [sortOrder])
+    const csv = stringify(sortArray, {
+      header: true,
+      columns: columns
+    })
 
     // Prepare path/filename, repo/org context and commit name/email variables
     const reportPath = `reports/${org}-${new Date().toISOString().substring(0, 19) + 'Z'}-${fileDate}.csv`
-    const committerName = core.getInput('committer-name', {required: false}) || 'github-actions'
-    const committerEmail = core.getInput('committer-email', {required: false}) || 'github-actions@github.com'
-    const {owner, repo} = github.context.repo
+    const committerName = core.getInput('committer-name', { required: false }) || 'github-actions'
+    const committerEmail = core.getInput('committer-email', { required: false }) || 'github-actions@github.com'
+    const { owner, repo } = github.context.repo
 
     // Push csv to repo
     const opts = {
       owner,
       repo,
       path: reportPath,
-      message: `${new Date().toISOString().slice(0, 10)} Git audit-log report`,
+      message: `${new Date().toISOString().slice(0, 10)} code frequency report`,
       content: Buffer.from(csv).toString('base64'),
       committer: {
         name: committerName,
