@@ -4,7 +4,7 @@
 
 ## Usage
 
-The example [workflow](https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions) below runs on a monthly [schedule](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#scheduled-events) using the amount of weeks as an interval set in `action.yml` (default 4 weeks) and can also be triggered manually using a [workflow_dispatch](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#manual-events) event.
+The example [workflow](https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions) below runs on a monthly [schedule](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#scheduled-events) using the amount of weeks as an interval set in the workflow (default 4 weeks) and can also be triggered manually using a [workflow_dispatch](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#manual-events) event.
 
 ```yml
 name: Code Frequency Action
@@ -34,14 +34,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Get Git audit-log
-        uses: nicklegan/github-org-code-frequency-action@v1.0.1
+      - name: Code Frequency Report
+        uses: nicklegan/github-org-code-frequency-action@v2.0.0
         with:
           token: ${{ secrets.ORG_TOKEN }}
           fromdate: ${{ github.event.inputs.fromdate }} # Used for workflow dispatch input
           todate: ${{ github.event.inputs.todate }} # Used for workflow dispatch input
+        # org: ''
+        # weeks: '4'
+        # sort: 'additions'
+        # sort-order: 'desc'
+        # appid: ${{ secrets.APPID }}
+        # privatekey: ${{ secrets.PRIVATEKEY }}
+        # installationid: ${{ secrets.INSTALLATIONID }}
 ```
 
 ## GitHub secrets
@@ -58,13 +65,14 @@ jobs:
 
 ## Action inputs
 
-| Name              | Description                                                                              | Default                     | Options                                                                                  | Required |
-| :---------------- | :--------------------------------------------------------------------------------------- | :-------------------------- | :--------------------------------------------------------------------------------------- | :------- |
-| `org`             | Organization different than workflow context                                             |                             |                                                                                          | `false`  |
-| `weeks`           | Amount of weeks in the past to collect data for **(weeks start on Sunday 00:00:00 GMT)** | `4`                         |                                                                                          | `false`  |
-| `sort`            | Column used to sort the acquired code frequency data                                     | `additions`                 | `additions, deletions, alltimeAdditions, alltimeDeletions, primaryLanguage, createdDate` | `false`  |
-| `committer-name`  | The name of the committer that will appear in the Git history                            | `github-actions`            |                                                                                          | `false`  |
-| `committer-email` | The committer email that will appear in the Git history                                  | `github-actions@github.com` |                                                                                          | `false`  |
+| Name              | Description                                                                              | Default                     | Options                                                                                            | Required |
+| :---------------- | :--------------------------------------------------------------------------------------- | :-------------------------- | :------------------------------------------------------------------------------------------------- | :------- |
+| `org`             | Organization different than workflow context                                             |                             |                                                                                                    | `false`  |
+| `weeks`           | Amount of weeks in the past to collect data for **(weeks start on Sunday 00:00:00 GMT)** | `4`                         |                                                                                                    | `false`  |
+| `sort`            | Column used to sort the acquired code frequency data                                     | `additions`                 | `repoName, additions, deletions, alltimeAdditions, alltimeDeletions, primaryLanguage, createdDate` | `false`  |
+| `sort-order`      | Selected column sorting direction                                                        | `desc`                      | `desc, asc`                                                                                        | `false`  |
+| `committer-name`  | The name of the committer that will appear in the Git history                            | `github-actions`            |                                                                                                    | `false`  |
+| `committer-email` | The committer email that will appear in the Git history                                  | `github-actions@github.com` |                                                                                                    | `false`  |
 
 ## Workflow dispatch inputs
 
@@ -93,16 +101,25 @@ The results of the 2nd and 3rd report column will be the sum of code frequency d
 | All languages            | All programming languages used in the repo          |
 | Repo creation date       | Date the repo has been created                      |
 
-A CSV report file to be saved in the repository `reports` folder using the following naming format: `organization-date-interval.csv`.
+A CSV report file to be saved in the repository **reports** folder using the following naming format: **`organization`-`date`-`interval`.csv**.
 
 ## GitHub App authentication
 
-In some scenarios it might be preferred to authenthicate as a [GitHub App](https://docs.github.com/developers/apps/getting-started-with-apps/about-apps) rather than using a [personal access token](https://docs.github.com/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token).
+As an alternative you can use GitHub App authentication to generate the report.
 
-The following features could be a benefit authenticating as a GitHub App installation:
+[Register](https://docs.github.com/developers/apps/building-github-apps/creating-a-github-app) a new organization/personal owned GitHub App with the below permissions:
 
-- The GitHub App is directly installed on the organization, no separate user account is required.
-- A GitHub App has more granular permissions than a personal access token.
-- To avoid hitting the 5000 requests per hour GitHub API rate limit, [authenticating as a GitHub App installation](https://docs.github.com/developers/apps/building-github-apps/authenticating-with-github-apps#authenticating-as-an-installation) would increase the [API request limit](https://docs.github.com/developers/apps/building-github-apps/rate-limits-for-github-apps#github-enterprise-cloud-server-to-server-rate-limits).
+| GitHub App Permission                     | Access           |
+| :---------------------------------------- | :--------------- |
+| `Repository Permissions:Contents`         | `read and write` |
+| `Organization Permissions:Administration` | `read`           |
 
-The GitHub App authentication strategy can be integrated with the Octokit library by installing and configuring the [@octokit/auth-app](https://github.com/octokit/auth-app.js/#usage-with-octokit) npm module before [rebuilding](https://docs.github.com/actions/creating-actions/creating-a-javascript-action) the Action in a separate repository.
+After registration install the GitHub App to your organization. Store the below App values as secrets.
+
+### GitHub App secrets
+
+| Name             | Value                             | Required |
+| :--------------- | :-------------------------------- | :------- |
+| `APPID`          | GitHub App ID number              | `true`   |
+| `PRIVATEKEY`     | Content of private key .pem file  | `true`   |
+| `INSTALLATIONID` | GitHub App installation ID number | `true`   |
