@@ -35,6 +35,9 @@ inputs:
   todate:
     description: 'The date to which to stop collecting data'
     required: false
+  json:
+    description: 'Optional report export in JSON format'
+    required: false
   appid:
     required: false
   privatekey:

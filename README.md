@@ -4,7 +4,7 @@
 
 ## Usage
 
-The example [workflow](https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions) below runs on a monthly [schedule](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#scheduled-events) using the amount of weeks as an interval set in the workflow (default 4 weeks) and can also be triggered manually using a [workflow_dispatch](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#manual-events) event.
+The example [workflow](https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions) below runs on a monthly [schedule](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#scheduled-events) using the amount of weeks as an interval set in the workflow (default 4 weeks) and alternatively can also be triggered manually using a [workflow_dispatch](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#manual-events) event.
 
 ```yml
 name: Code Frequency Action
@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Code Frequency Report
-        uses: nicklegan/github-org-code-frequency-action@v2.0.0
+        uses: nicklegan/github-org-code-frequency-action@v2.1.0
         with:
           token: ${{ secrets.ORG_TOKEN }}
           fromdate: ${{ github.event.inputs.fromdate }} # Used for workflow dispatch input
@@ -46,6 +46,7 @@ jobs:
         # weeks: '4'
         # sort: 'additions'
         # sort-order: 'desc'
+        # json: 'false'
         # appid: ${{ secrets.APPID }}
         # privatekey: ${{ secrets.PRIVATEKEY }}
         # installationid: ${{ secrets.INSTALLATIONID }}
@@ -71,6 +72,7 @@ jobs:
 | `weeks`           | Amount of weeks in the past to collect data for **(weeks start on Sunday 00:00:00 GMT)** | `4`                         |                                                                                                    | `false`  |
 | `sort`            | Column used to sort the acquired code frequency data                                     | `additions`                 | `repoName, additions, deletions, alltimeAdditions, alltimeDeletions, primaryLanguage, createdDate` | `false`  |
 | `sort-order`      | Selected column sorting direction                                                        | `desc`                      | `desc, asc`                                                                                        | `false`  |
+| `json`            | Generate an additional report in JSON format                                             | `false`                     | `true, false`                                                                                      | `false`  |
 | `committer-name`  | The name of the committer that will appear in the Git history                            | `github-actions`            |                                                                                                    | `false`  |
 | `committer-email` | The committer email that will appear in the Git history                                  | `github-actions@github.com` |                                                                                                    | `false`  |
 
@@ -86,26 +88,27 @@ If the below fields are left empty during [workflow dispatch input](https://gith
 | `Optional interval start date` | A date matching the format `yyyy-mm-dd` | `false`  |
 | `Optional interval end date`   | A date matching the format `yyyy-mm-dd` | `false`  |
 
-## CSV layout
+## CSV/JSON layout
 
 The results of the 2nd and 3rd report column will be the sum of code frequency date for the selected interval per organization repository.
 
-| Column                   | Description                                         |
-| :----------------------- | :-------------------------------------------------- |
-| Repository               | Organization owned repository                       |
-| Lines added (interval)   | Number of lines of code added during set interval   |
-| Lines deleted (interval) | Number of lines of code deleted during set interval |
-| All time lines added     | Number of lines of code added since repo creation   |
-| All time lines deleted   | Number of lines of code deleted since repo creation |
-| Primary language         | The primary programming language used in the repo   |
-| All languages            | All programming languages used in the repo          |
-| Repo creation date       | Date the repo has been created                      |
+| Column                     | JSON               | Description                                         |
+| :------------------------- | :----------------- | :-------------------------------------------------- |
+| `Repository`               | `repoName`         | Organization owned repository                       |
+| `Lines added (interval)`   | `additions`        | Number of lines of code added during set interval   |
+| `Lines deleted (interval)` | `deletions`        | Number of lines of code deleted during set interval |
+| `All time lines added`     | `alltimeAdditions` | Number of lines of code added since repo creation   |
+| `All time lines deleted`   | `alltimeDeletions` | Number of lines of code deleted since repo creation |
+| `Primary language`         | `primaryLanguage`  | The primary programming language used in the repo   |
+| `All languages`            | `allLanguages`     | All programming languages used in the repo          |
+| `Repo creation date`       | `createdDate`      | Date the repo has been created                      |
 
 A CSV report file to be saved in the repository **reports** folder using the following naming format: **`organization`-`date`-`interval`.csv**.
 
 ## GitHub App authentication
 
 As an alternative you can use GitHub App authentication to generate the report.
+For larger organizations it is recommended to use this method as more API requests per hour are allowed which will avoid running into [rate limit](https://docs.github.com/developers/apps/building-github-apps/rate-limits-for-github-apps) errors.
 
 [Register](https://docs.github.com/developers/apps/building-github-apps/creating-a-github-app) a new organization/personal owned GitHub App with the below permissions:
 

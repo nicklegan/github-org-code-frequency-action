@@ -5,6 +5,7 @@ const { orderBy } = require('natural-orderby')
 const eventPayload = require(process.env.GITHUB_EVENT_PATH)
 const { GitHub } = require('@actions/github/lib/utils')
 const { createAppAuth } = require('@octokit/auth-app')
+const { owner, repo } = github.context.repo
 
 const appId = core.getInput('appid', { required: false })
 const privateKey = core.getInput('privatekey', { required: false })
@@ -15,6 +16,9 @@ const org = core.getInput('org', { required: false }) || eventPayload.organizati
 const weeks = core.getInput('weeks', { required: false }) || '4'
 const sortColumn = core.getInput('sort', { required: false }) || 'additions'
 const sortOrder = core.getInput('sort-order', { required: false }) || 'desc'
+const jsonExport = core.getInput('json', { required: false }) || 'false'
+const committerName = core.getInput('committer-name', { required: false }) || 'github-actions'
+const committerEmail = core.getInput('committer-email', { required: false }) || 'github-actions@github.com'
 
 let octokit
 let columnDate
@@ -42,6 +46,9 @@ if (appId && privateKey && installationId) {
     await getRepos(repoArray)
     await freqStats(repoArray, sumArray)
     await sortpushTotals(sumArray)
+    if (jsonExport === 'true') {
+    await json(sumArray)
+    }
   } catch (error) {
     core.setFailed(error.message)
   }
@@ -178,7 +185,7 @@ async function freqStats(repoArray, sumArray) {
   }
 }
 
-// Add columns, sort and push report to repo
+// Create and push CSV report
 async function sortpushTotals(sumArray) {
   try {
     const columns = {
@@ -198,13 +205,7 @@ async function sortpushTotals(sumArray) {
       columns: columns
     })
 
-    // Prepare path/filename, repo/org context and commit name/email variables
     const reportPath = `reports/${org}-${new Date().toISOString().substring(0, 19) + 'Z'}-${fileDate}.csv`
-    const committerName = core.getInput('committer-name', { required: false }) || 'github-actions'
-    const committerEmail = core.getInput('committer-email', { required: false }) || 'github-actions@github.com'
-    const { owner, repo } = github.context.repo
-
-    // Push csv to repo
     const opts = {
       owner,
       repo,
@@ -217,7 +218,31 @@ async function sortpushTotals(sumArray) {
       }
     }
 
-    console.log(`Pushing final CSV report to repository path: ${reportPath}`)
+    console.log(`Pushing CSV report to repository path: ${reportPath}`)
+
+    await octokit.rest.repos.createOrUpdateFileContents(opts)
+  } catch (error) {
+    core.setFailed(error.message)
+  }
+}
+
+// Create and push optional JSON report
+async function json(sumArray) {
+  try {
+    const reportPath = `reports/${org}-${new Date().toISOString().substring(0, 19) + 'Z'}-${fileDate}.json`
+    const opts = {
+      owner,
+      repo,
+      path: reportPath,
+      message: `${new Date().toISOString().slice(0, 10)} repo collaborator report`,
+      content: Buffer.from(JSON.stringify(sumArray, null, 2)).toString('base64'),
+      committer: {
+        name: committerName,
+        email: committerEmail
+      }
+    }
+
+    console.log(`Pushing JSON report to repository path: ${reportPath}`)
 
     await octokit.rest.repos.createOrUpdateFileContents(opts)
   } catch (error) {
